@@ -1,10 +1,11 @@
 package src.Main.java;
 
 import java.awt.*;
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
-import java.io.IOException;
 import java.net.*;
+import java.rmi.Naming;
+import java.rmi.NotBoundException;
+import java.rmi.RemoteException;
+import java.rmi.server.UnicastRemoteObject;
 
 public class Jogador1 extends javax.swing.JFrame{
 
@@ -78,9 +79,6 @@ public class Jogador1 extends javax.swing.JFrame{
             vitoria9, vitoria10, vitoria11, vitoria12, vitoria13, vitoria14, vitoria15, vitoria16
     };
 
-    private ConexaoChat clienteChat;
-    private ConexaoJogo clienteJogo;
-
     public Jogador1() {
         posicoes = new int[24];
         qtdPecas = 0;
@@ -88,17 +86,28 @@ public class Jogador1 extends javax.swing.JFrame{
         solicitouEmpate = false;
         fimJogo = false;
 
-        //Conexão para o jogo e para o chat
-        this.connect();
+        String localizacao = "//localhost/servicoServidor";
+        try {
+            servico = (ServicoServidorItf) Naming.lookup(localizacao);
+            idJogador = servico.informaIdJogador();
+
+            if(idJogador == -1){
+                System.exit(0);
+            }
+
+            JogadorImpl jogador = new JogadorImpl();
+            String localizacaoJogador = "//localhost/jogador" + idJogador;
+
+            //System.out.println("Registrando o objeto no RMIRegistry...");
+            //LocateRegistry.createRegistry(1099);
+
+            Naming.rebind(localizacaoJogador, jogador);
+            servico.informaLocalizacao(localizacaoJogador, idJogador);
+        } catch (MalformedURLException | NotBoundException | RemoteException e) {
+            System.out.println("Erro no construtor do jogador: " + e.getMessage());
+        }
 
         initComponents();
-
-        Thread threadChat = new Thread(new Runnable(){
-            public void run(){
-                executaChat();;
-            }
-        });
-        threadChat.start();
 
         this.setTitle("Jogador #" + idJogador + " - Nine Mens Morris");
 
@@ -108,27 +117,17 @@ public class Jogador1 extends javax.swing.JFrame{
             titulo.setBackground(vermelho);
             outroJogador = 2;
             ativaBotoes = false;
+            mensagem.setEnabled(false);
+            enviar.setEnabled(false);
         }else{
             titulo.setText("Jogador #2. Aguarde seu turno.");
             Color azul = new Color(0x3394e8);
             titulo.setBackground(azul);
             outroJogador = 1;
             ativaBotoes = false;
-
-            Thread t = new Thread(new Runnable(){
-                public void run(){
-                    controlaTurno();;
-                }
-            });
-            t.start();
         }
 
         atualizaEstadoBotoes();
-    }
-
-    private void connect() {
-        clienteJogo = new ConexaoJogo();
-        clienteChat = new ConexaoChat();
     }
 
     public void atualizaEstadoBotoes() {//Habilita os botões de acordo com seu turno
@@ -683,50 +682,6 @@ public class Jogador1 extends javax.swing.JFrame{
         }
     }
 
-    public void controlaTurno(){
-        //Aguarda seu turno enquanto recebe uma jogada válida do adversário
-        int n = clienteJogo.recebeJogada();
-        titulo.setText("Seu adversário clicou o botão #" + n + ". Sua vez");
-        //No início do jogo apenas dispões as peças no tabuleiro
-        if(qtdPecasAdv < 3){
-            //Atualiza o vetor com a jogada recebida do adversário
-            if(idJogador == 1){
-                posicoes[n-1] = 2;
-            }else{
-                posicoes[n-1] = 1;
-            }
-            qtdPecasAdv++;
-        }else{//Desenvolvimento do jogo após peças dispostas
-            //Procura qual posicao não possui nenhuma peça
-            posicaoVazia = posicaoVaziaTabuleiro();
-            //Atualiza o vetor trocando a jogada do advserário com a posição vazia
-            if(idJogador == 1){//n-1 é a posição do botão na interface
-                posicoes[posicaoVazia] = 2;
-                posicoes[n-1] = 0;
-            }else{
-                posicoes[posicaoVazia] = 1;
-                posicoes[n-1] = 0;
-            }
-        }
-        //Só habilita a movimentação de peças após as 6 estiverem dispostas no tabuleiro
-        if(qtdPecas == 3 && qtdPecasAdv == 3){
-            //Habilita somente as peças do jogador correspondente ao turno
-            if(idJogador == 1){
-                alteraEstadoBotoes(1, true);
-                alteraEstadoBotoes(2, false);
-            }else{
-                alteraEstadoBotoes(2, true);
-                alteraEstadoBotoes(1, false);
-            }
-
-            atualizaImagensBotoes();
-        }else{//No início do jogo apenas atualiza o tabuleiro de acordo com as peças colocadas
-            ativaBotoes = true;
-            atualizaEstadoBotoes();
-        }
-
-    }
-
     public int posicaoVaziaTabuleiro(){
         int posicao = 0;
         for (int i = 0; i < posicoes.length; i++) {
@@ -748,7 +703,12 @@ public class Jogador1 extends javax.swing.JFrame{
                 desabilitaTodosBotoes();
                 fimJogo = true;
                 //Comunica o outro jogador que ele foi derrotado
-                clienteChat.enviaMensagem("/f");
+                //clienteChat.enviaMensagem("/f");
+                try {
+                    servico.enviaMensagem("/f", outroJogador);
+                } catch (RemoteException e) {
+                    System.out.println("Erro no verificaVencedor do jogador: " + e.getMessage());
+                }
             }
         }
 
@@ -786,14 +746,12 @@ public class Jogador1 extends javax.swing.JFrame{
 
             ativaBotoes = false;
             atualizaEstadoBotoes();
-            clienteJogo.enviaJogada(n);
 
-            Thread t = new Thread(new Runnable(){
-                public void run(){
-                    controlaTurno();;
-                }
-            });
-            t.start();
+            try {
+                servico.enviaJogada(n, outroJogador);
+            } catch (RemoteException e) {
+                System.out.println("Erro no cliqueBotao do jogador: " + e.getMessage());
+            }
             //Toda jogada verifica se alguem venceu
             verificaVencedor();
         }
@@ -829,52 +787,9 @@ public class Jogador1 extends javax.swing.JFrame{
         return ehValido;
     }
 
-    public void executaChat(){
-        String msgRecebida = "";
-        //Execução da thread chat
-        while(!msgRecebida.equals("exit")){
-            msgRecebida = clienteChat.recebeMensagem();
-
-            if(msgRecebida.equals("/d") && !fimJogo){
-                chatArea.setText(chatArea.getText() + "\n Você venceu! Seu adversario desistiu.");
-                titulo.setText("Você venceu! Seu adversario desistiu.");
-                desabilitaTodosBotoes();
-                fimJogo = true;
-            }else if(msgRecebida.equals("/e") && !fimJogo){
-                if(solicitouEmpate){
-                    chatArea.setText(chatArea.getText() + "\n Jogadores concordaram com empate.\n Fim de jogo.");
-                    titulo.setText("Fim de jogo! Jogadores concordaram com empate. ");
-                    desabilitaTodosBotoes();
-                    clienteChat.enviaMensagem("/e");
-                    solicitouEmpate = false;
-                    fimJogo = true;
-                }else {
-                    chatArea.setText(chatArea.getText() + "\n Seu adversário solicitou empate\n Envie /e para aceitar.");
-                }
-            }else if(msgRecebida.equals("/f")){
-                chatArea.setText(chatArea.getText() + "\n Fim de jogo. Você perdeu!");
-                titulo.setText("Fim de jogo! Você perdeu.");
-                desabilitaTodosBotoes();
-                fimJogo = true;
-            }else if(msgRecebida.equals("/i")){//Quando os dois se conectam o jogador 1 pode jogar
-                if(idJogador == 1){
-                    ativaBotoes = true;
-                    atualizaEstadoBotoes();
-                    titulo.setText("Jogador #1. Inicie a partida!");
-                    chatArea.setText("Jogador #2 se conectou.");
-                }
-            }else if(!msgRecebida.isEmpty()){
-                chatArea.setText(chatArea.getText() + "\n Adversario: " + msgRecebida);
-            }
-            chatArea.setCaretPosition(chatArea.getText().length());
-        }
-
-    }
-
 
     public void enviarMensagemChat(){
-        String msg = "";
-        msg = mensagem.getText();
+        String msg = mensagem.getText();
 
         if(msg.equals("/d") && !fimJogo){
             chatArea.setText(chatArea.getText() + "\n Você desistiu! Seu adversario venceu.");
@@ -891,113 +806,116 @@ public class Jogador1 extends javax.swing.JFrame{
         }else if(!msg.isEmpty()){
             chatArea.setText(chatArea.getText() + "\n Eu: " + msg);
         }
-        clienteChat.enviaMensagem(msg);
+
+        try {
+            servico.enviaMensagem(msg, outroJogador);
+        } catch (RemoteException e) {
+            System.out.println("Erro no enviaMensagemChat do jogador: " + e.getMessage());
+        }
+
         mensagem.setText("");
     }
 
-    private class ConexaoJogo {
 
-        private Socket socket;
-        private DataInputStream entrada;
-        private DataOutputStream saida;
+    public class JogadorImpl extends UnicastRemoteObject implements ServicoJogadorItf{
 
-        public ConexaoJogo(){
-            System.out.println("----- Cliente -----");
-
-            try{
-                //Se conecta via socket ao jogo do servidor
-                socket = new Socket("localhost", 51734);
-                entrada = new DataInputStream(socket.getInputStream());
-                saida = new DataOutputStream(socket.getOutputStream());
-                //Recebe seu id de conexão
-                idJogador = entrada.readInt();
-                System.out.println("Conectado ao servidor como Jogador #" + idJogador + ".");
-            } catch (IOException ex) {
-                System.out.println("Erro no construtor do ConexaoJogo");
-            }
+        public JogadorImpl() throws RemoteException{
+            super();
+            System.out.println("----- Jogador #" + idJogador + " -----");
         }
 
-        public void enviaJogada(int n){
-            try{
-                saida.writeInt(n);
-                saida.flush();
-            } catch (IOException ex) {
-                System.out.println("Erro no enviaJogada() do Jogador");
+        @Override
+        public void atualizaChat(String msg) throws RemoteException {
+
+            if(msg.equals("/d") && !fimJogo){
+                chatArea.setText(chatArea.getText() + "\n Você venceu! Seu adversario desistiu.");
+                titulo.setText("Você venceu! Seu adversario desistiu.");
+                desabilitaTodosBotoes();
+                fimJogo = true;
+            }else if(msg.equals("/e") && !fimJogo){
+                if(solicitouEmpate){
+                    chatArea.setText(chatArea.getText() + "\n Jogadores concordaram com empate.\n Fim de jogo.");
+                    titulo.setText("Fim de jogo! Jogadores concordaram com empate. ");
+                    desabilitaTodosBotoes();
+                    //clienteChat.enviaMensagem("/e");
+                    solicitouEmpate = false;
+                    fimJogo = true;
+
+                    try {
+                        servico.enviaMensagem("/e", outroJogador);
+                    } catch (RemoteException e) {
+                        System.out.println("Erro no atualizaChat do jogador: " + e.getMessage());
+                    }
+
+                }else {
+                    chatArea.setText(chatArea.getText() + "\n Seu adversário solicitou empate\n Envie /e para aceitar.");
+                }
+            }else if(msg.equals("/f")){
+                chatArea.setText(chatArea.getText() + "\n Fim de jogo. Você perdeu!");
+                titulo.setText("Fim de jogo! Você perdeu.");
+                desabilitaTodosBotoes();
+                fimJogo = true;
+            }else if(msg.equals("/i")){//Quando os dois se conectam o jogador 1 pode jogar
+                if(idJogador == 1){
+                    ativaBotoes = true;
+                    atualizaEstadoBotoes();
+                    mensagem.setEnabled(true);
+                    enviar.setEnabled(true);
+                    titulo.setText("Jogador #1. Inicie a partida!");
+                    chatArea.setText("Jogador #2 se conectou.");
+                }
+            }else if(!msg.isEmpty()){
+                chatArea.setText(chatArea.getText() + "\n Adversario: " + msg);
             }
+            chatArea.setCaretPosition(chatArea.getText().length());
         }
 
-        public int recebeJogada(){
-            int n = -1;
-            try{
-                n = entrada.readInt();
-                System.out.println("Jogador #" + outroJogador + " clicou o botão #" + n);
-            } catch (IOException ex) {
-                System.out.println("Erro no recebeJogada() do Jogador");
+        @Override
+        public void atualizaTurno(int n) throws RemoteException {
+            //Aguarda seu turno enquanto recebe uma jogada válida do adversário
+
+            titulo.setText("Seu adversário clicou o botão #" + n + ". Sua vez");
+            //No início do jogo apenas dispões as peças no tabuleiro
+            if(qtdPecasAdv < 3){
+                //Atualiza o vetor com a jogada recebida do adversário
+                if(idJogador == 1){
+                    posicoes[n-1] = 2;
+                }else{
+                    posicoes[n-1] = 1;
+                }
+                qtdPecasAdv++;
+            }else{//Desenvolvimento do jogo após peças dispostas
+                //Procura qual posicao não possui nenhuma peça
+                posicaoVazia = posicaoVaziaTabuleiro();
+                //Atualiza o vetor trocando a jogada do advserário com a posição vazia
+                if(idJogador == 1){//n-1 é a posição do botão na interface
+                    posicoes[posicaoVazia] = 2;
+                    posicoes[n-1] = 0;
+                }else{
+                    posicoes[posicaoVazia] = 1;
+                    posicoes[n-1] = 0;
+                }
             }
+            //Só habilita a movimentação de peças após as 6 estiverem dispostas no tabuleiro
+            if(qtdPecas == 3 && qtdPecasAdv == 3){
+                //Habilita somente as peças do jogador correspondente ao turno
+                if(idJogador == 1){
+                    alteraEstadoBotoes(1, true);
+                    alteraEstadoBotoes(2, false);
+                }else{
+                    alteraEstadoBotoes(2, true);
+                    alteraEstadoBotoes(1, false);
+                }
 
-            return n;
-        }
-
-        public void fechaConexao(){
-            try{
-                socket.close();
-                System.out.println("-----CONEXÃO ENCERRADA-----");
-            } catch (IOException ex) {
-                System.out.println("Erro no fechaConexao() do Cliente");
-            }
-        }
-
-    }
-
-
-    private class ConexaoChat {
-
-        private Socket socket;
-        private DataInputStream entrada;
-        private DataOutputStream saida;
-
-        public ConexaoChat(){
-            try{
-                //Se conecta via socket ao chat do servidor
-                socket = new Socket("localhost", 51738);
-                entrada = new DataInputStream(socket.getInputStream());
-                saida = new DataOutputStream(socket.getOutputStream());
-            } catch (IOException ex) {
-                System.out.println("Erro no construtor do chat");
-            }
-        }
-
-        public void enviaMensagem(String msg){
-            try{
-                saida.writeUTF(msg);
-                saida.flush();
-            } catch (IOException ex) {
-                System.out.println("Erro no enviaMensagem() do Cliente");
-            }
-        }
-
-        public String recebeMensagem(){
-            String msg = "";
-            try{
-                msg = entrada.readUTF();
-            } catch (IOException ex) {
-                System.out.println("Erro no recebeMensagem() do Cliente");
-                System.exit(0);
-            }
-
-            return msg;
-        }
-
-        public void fechaConexao(){
-            try{
-                socket.close();
-                System.out.println("-----CONEXÃO ENCERRADA-----");
-            } catch (IOException ex) {
-                System.out.println("Erro no fechaConexao() do ConexaoChat");
+                atualizaImagensBotoes();
+            }else{//No início do jogo apenas atualiza o tabuleiro de acordo com as peças colocadas
+                ativaBotoes = true;
+                atualizaEstadoBotoes();
             }
         }
 
     }
+
 
     private void initComponents() {
 

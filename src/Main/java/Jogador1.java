@@ -18,6 +18,7 @@ public class Jogador1 extends javax.swing.JFrame{
     private boolean ativaBotoes;
     private boolean solicitouEmpate;
     private boolean fimJogo;
+    private boolean newPoint = false;
     private int posicaoVazia;
 
     private int[] possibilidadesCasa0 = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24};
@@ -98,8 +99,6 @@ public class Jogador1 extends javax.swing.JFrame{
             JogadorImpl jogador = new JogadorImpl();
             String localizacaoJogador = "//localhost/jogador" + idJogador;
 
-            //System.out.println("Registrando o objeto no RMIRegistry...");
-            //LocateRegistry.createRegistry(1099);
 
             Naming.rebind(localizacaoJogador, jogador);
             servico.informaLocalizacao(localizacaoJogador, idJogador);
@@ -155,8 +154,8 @@ public class Jogador1 extends javax.swing.JFrame{
         b23.setEnabled(ativaBotoes);
         b24.setEnabled(ativaBotoes);
 
-
         atualizaImagensBotoes();
+
         //Desabilita todas os botões que não são vazios
         if(posicoes[0] > 0){
             b1.setEnabled(false);
@@ -231,7 +230,7 @@ public class Jogador1 extends javax.swing.JFrame{
             b24.setEnabled(false);
         }
         //Após a disposição de peças, desabilita o espaço vazio para clique
-        if(qtdPecas == 3 && qtdPecasAdv == 3){
+        if(qtdPecas == 9 && qtdPecasAdv == 9){
             alteraEstadoBotoes(0, false);
         }
 
@@ -677,7 +676,7 @@ public class Jogador1 extends javax.swing.JFrame{
     }
 
     public void desabilitaTodosBotoes(){
-        for(int i = 0; i < 3; i++){
+        for(int i = 0; i < 9; i++){
             alteraEstadoBotoes(i, false);
         }
     }
@@ -692,12 +691,23 @@ public class Jogador1 extends javax.swing.JFrame{
         return posicao;
     }
 
-    private void verificaVencedor(){
+    private void verificaPontuacao(){
         ativaBotoes = false;
 
         for (int[] vitoria : vitoriasPossiveis) {
-            if(posicoes[vitoria[0]] != 0 && posicoes[vitoria[0]] == posicoes[vitoria[1]] &&
-                    posicoes[vitoria[1]] == posicoes[vitoria[2]]){
+
+            if (posicoes[vitoria[0]] == posicoes[vitoria[1]] && posicoes[vitoria[1]] == posicoes[vitoria[2]] ||
+                    posicoes[vitoria[3]] == posicoes[vitoria[4]] && posicoes[vitoria[4]] == posicoes[vitoria[5]] ||
+                    posicoes[vitoria[6]] == posicoes[vitoria[7]] && posicoes[vitoria[7]] == posicoes[vitoria[8]] ||
+                    posicoes[vitoria[9]] == posicoes[vitoria[10]] && posicoes[vitoria[10]] == posicoes[vitoria[11]] ||
+                    posicoes[vitoria[12]] == posicoes[vitoria[13]] && posicoes[vitoria[13]] == posicoes[vitoria[14]] ||
+                    posicoes[vitoria[15]] == posicoes[vitoria[16]] && posicoes[vitoria[16]] == posicoes[vitoria[17]]
+            ){
+                newPoint = true;
+            }
+
+
+            if(Fases()==2  && qtdPecasAdv <= 2 && qtdPecas >= 3){
                 //Verifica em cada possibilidade se não existe uma posição vazia e se as três possuem o mesmo valor
                 titulo.setText("Parabéns você venceu!");
                 desabilitaTodosBotoes();
@@ -714,11 +724,26 @@ public class Jogador1 extends javax.swing.JFrame{
 
     }
 
+    private void JogadorInfo(){}
+
+    private int Fases(){
+        if(qtdPecas==9 && qtdPecasAdv==9){
+           return 2;
+        }
+
+        if(qtdPecas>9 && qtdPecasAdv<9){
+            return 1;
+        }
+        return 0;
+    }
+
+
+
     public void cliqueBotao(int n){
         int casaTroca = 0;
         boolean jogadaValida;
         //No início do jogo, apenas marca a posição com a cor de sua peça
-        if(qtdPecas < 3){
+        if(qtdPecas < 9){
             jogadaValida = true;
             if(idJogador == 1){
                 posicoes[n-1] = 1;
@@ -753,25 +778,30 @@ public class Jogador1 extends javax.swing.JFrame{
                 System.out.println("Erro no cliqueBotao do jogador: " + e.getMessage());
             }
             //Toda jogada verifica se alguem venceu
-            verificaVencedor();
+            verificaPontuacao();
         }
 
     }
 
     public void mudaBotaoParaVazio(javax.swing.JButton botao){
-        if(qtdPecas < 3){
+        if(qtdPecas < 9){
             botao.setIcon(new javax.swing.ImageIcon(getClass().getResource("../resources/espacoVazio.png")));
         }
     }
 
     public void mudaCorBotao(javax.swing.JButton botao){
-        if(qtdPecas < 3){
+        if(qtdPecas < 9){
             if(idJogador == 1){
                 botao.setIcon(new javax.swing.ImageIcon(getClass().getResource("../resources/pecaVermelha.png")));
             }else{
                 botao.setIcon(new javax.swing.ImageIcon(getClass().getResource("../resources/pecaAzul.png")));
             }
         }
+        else if(newPoint && validaJogada(1)){
+            botao.setIcon(new javax.swing.ImageIcon(getClass().getResource("../resources/espacoVazio.png")));
+            newPoint=false;
+        }
+
     }
 
     public boolean validaJogada(int n){
@@ -786,7 +816,6 @@ public class Jogador1 extends javax.swing.JFrame{
         }
         return ehValido;
     }
-
 
     public void enviarMensagemChat(){
         String msg = mensagem.getText();
@@ -876,7 +905,7 @@ public class Jogador1 extends javax.swing.JFrame{
 
             titulo.setText("Seu adversário clicou o botão #" + n + ". Sua vez");
             //No início do jogo apenas dispões as peças no tabuleiro
-            if(qtdPecasAdv < 3){
+            if(qtdPecasAdv < 9){
                 //Atualiza o vetor com a jogada recebida do adversário
                 if(idJogador == 1){
                     posicoes[n-1] = 2;
@@ -896,8 +925,8 @@ public class Jogador1 extends javax.swing.JFrame{
                     posicoes[n-1] = 0;
                 }
             }
-            //Só habilita a movimentação de peças após as 6 estiverem dispostas no tabuleiro
-            if(qtdPecas == 3 && qtdPecasAdv == 3){
+            //Só habilita a movimentação de peças após as 18 estiverem dispostas no tabuleiro
+            if(qtdPecas == 9 && qtdPecasAdv == 9){
                 //Habilita somente as peças do jogador correspondente ao turno
                 if(idJogador == 1){
                     alteraEstadoBotoes(1, true);
